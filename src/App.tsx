@@ -1,24 +1,37 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Code, Eye, Save, Trash2, FolderOpen, ChevronDown, ChevronUp } from 'lucide-react';
 import './App.css';
+import { copyElementAsSVG, copyElementAsPNG } from './utils/figmaExport';
 
 interface SavedComponent {
   id: number;
   name: string;
   code: string;
   createdAt: string;
+  category?: string;
+  tags?: string[];
+  description?: string;
 }
 
 function App() {
   const [code, setCode] = useState<string>('');
   const [componentName, setComponentName] = useState<string>('');
+  const [componentCategory, setComponentCategory] = useState<string>('');
+  const [componentTags, setComponentTags] = useState<string>('');
+  const [componentDescription, setComponentDescription] = useState<string>('');
   const [savedComponents, setSavedComponents] = useState<SavedComponent[]>([]);
   const [selectedComponent, setSelectedComponent] = useState<SavedComponent | null>(null);
   const [simulationData, setSimulationData] = useState<string>('{}');
   const [showDataInput, setShowDataInput] = useState<boolean>(true);
   const [dataError, setDataError] = useState<string>('');
+  
+  // Phase 2: 非表示レンダリング用
+  const [renderingComponent, setRenderingComponent] = useState<SavedComponent | null>(null);
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'loading' | 'success'>('idle');
 
-  // localStorageからコンポーネントを読み込み
+  // カテゴリの選択肢
+  const categories = ['Button', 'Card', 'Form', 'Layout', 'Navigation', 'Other'];
+
   useEffect(() => {
     const saved = localStorage.getItem('componentBridge_components');
     if (saved) {
@@ -30,12 +43,10 @@ function App() {
     }
   }, []);
 
-  // localStorageに保存
   const saveToLocalStorage = (components: SavedComponent[]) => {
     localStorage.setItem('componentBridge_components', JSON.stringify(components));
   };
 
-  // コンポーネントを保存
   const handleSave = () => {
     if (!componentName.trim()) {
       alert('コンポーネント名を入力してください');
@@ -51,6 +62,9 @@ function App() {
       name: componentName,
       code: code,
       createdAt: new Date().toISOString(),
+      category: componentCategory || undefined,
+      tags: componentTags ? componentTags.split(',').map(t => t.trim()).filter(t => t) : undefined,
+      description: componentDescription || undefined,
     };
 
     const updated = [...savedComponents, newComponent];
@@ -59,16 +73,20 @@ function App() {
     
     alert('保存しました！');
     setComponentName('');
+    setComponentCategory('');
+    setComponentTags('');
+    setComponentDescription('');
   };
 
-  // コンポーネントを読み込み
   const handleLoad = (component: SavedComponent) => {
     setSelectedComponent(component);
     setComponentName(component.name);
     setCode(component.code);
+    setComponentCategory(component.category || '');
+    setComponentTags(component.tags?.join(', ') || '');
+    setComponentDescription(component.description || '');
   };
 
-  // コンポーネントを削除
   const handleDelete = (id: number) => {
     if (!confirm('本当に削除しますか？')) return;
     
@@ -80,18 +98,77 @@ function App() {
       setSelectedComponent(null);
       setComponentName('');
       setCode('');
+      setComponentCategory('');
+      setComponentTags('');
+      setComponentDescription('');
     }
   };
 
-  // 新規作成
   const handleNew = () => {
     setSelectedComponent(null);
     setComponentName('');
     setCode('');
     setSimulationData('{}');
+    setComponentCategory('');
+    setComponentTags('');
+    setComponentDescription('');
   };
 
-  // データのバリデーション
+  // Phase 2: Figmaコピー機能
+  const handleCopyToFigma = async (component: SavedComponent, format: 'svg' | 'png') => {
+    try {
+      setCopyStatus('loading');
+      console.log('Figmaコピー開始:', component.name, format);
+      
+      // レンダリング前にクリア
+      setRenderingComponent(null);
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // 一時的にコンポーネントをレンダリング
+      setRenderingComponent(component);
+      
+      // iframeのレンダリングを待つ
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      const hiddenIframe = document.querySelector('iframe[title="Hidden Render"]') as HTMLIFrameElement;
+      
+      if (!hiddenIframe || !hiddenIframe.contentDocument) {
+        console.error('iframeが見つかりません');
+        setCopyStatus('idle');
+        return;
+      }
+
+      // iframe内のコンテンツを取得
+      const iframeBody = hiddenIframe.contentDocument.body;
+      const rootDiv = iframeBody.querySelector('#root');
+
+      if (!rootDiv || !rootDiv.firstElementChild) {
+        console.error('コンテンツが見つかりません');
+        setCopyStatus('idle');
+        return;
+      }
+
+      // root内の実際のReactコンポーネントをコピー
+      if (format === 'svg') {
+        await copyElementAsSVG(rootDiv.firstElementChild as HTMLElement);
+      } else {
+        await copyElementAsPNG(rootDiv.firstElementChild as HTMLElement);
+      }
+      
+      setCopyStatus('success');
+      setTimeout(() => setCopyStatus('idle'), 2000);
+      
+    } catch (error) {
+      console.error('コピーエラー:', error);
+      setCopyStatus('idle');
+    } finally {
+      // クリーンアップ
+      setTimeout(() => {
+        setRenderingComponent(null);
+      }, 100);
+    }
+  };
+
   const validateSimulationData = (data: string): boolean => {
     if (!data.trim()) {
       setDataError('');
@@ -108,13 +185,11 @@ function App() {
     }
   };
 
-  // データ入力の変更
   const handleDataChange = (value: string) => {
     setSimulationData(value);
     validateSimulationData(value);
   };
 
-  // サンプルデータを挿入
   const insertSampleData = () => {
     const sample = {
       title: "サンプルタイトル",
@@ -127,7 +202,6 @@ function App() {
     setDataError('');
   };
 
-  // プレビュー生成（データを含む）
   const generatePreview = (): string => {
     if (!code.trim()) return '';
     
@@ -137,7 +211,6 @@ function App() {
         propsData = JSON.parse(simulationData);
       }
     } catch (e) {
-      // JSONエラーの場合は空のpropsを使用
       propsData = {};
     }
     
@@ -170,7 +243,6 @@ function App() {
               const componentMatch = \`${code}\`.match(/(?:const|function|class)\\s+(\\w+)/);
               const ComponentName = componentMatch ? componentMatch[1] : null;
               
-              // シミュレーションデータ
               const simulationProps = ${JSON.stringify(propsData)};
               
               if (ComponentName && window[ComponentName]) {
@@ -187,27 +259,63 @@ function App() {
     }
   };
 
+  // Phase 2: 保存済みコンポーネント用のプレビュー生成
+  const generatePreviewForComponent = (component: SavedComponent): string => {
+    try {
+      return `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="UTF-8">
+            <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+            <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+            <style>
+              body { 
+                margin: 0; 
+                padding: 20px; 
+                font-family: system-ui, -apple-system, sans-serif;
+              }
+              * { box-sizing: border-box; }
+            </style>
+          </head>
+          <body>
+            <div id="root"></div>
+            <script type="text/babel">
+              const { useState, useEffect } = React;
+              
+              ${component.code}
+              
+              const root = ReactDOM.createRoot(document.getElementById('root'));
+              const componentMatch = \`${component.code}\`.match(/(?:const|function|class)\\s+(\\w+)/);
+              const ComponentName = componentMatch ? componentMatch[1] : null;
+              
+              if (ComponentName && window[ComponentName]) {
+                root.render(React.createElement(window[ComponentName], {}));
+              } else {
+                root.render(React.createElement('div', null, 'コンポーネントが見つかりません'));
+              }
+            </script>
+          </body>
+        </html>
+      `;
+    } catch (e) {
+      return '';
+    }
+  };
+
   const previewHtml = generatePreview();
 
   return (
     <div className="app-container">
-      {/* ヘッダー */}
       <header className="app-header">
         <div className="header-left">
           <h1 className="app-title">ComponentBridge</h1>
-          <span className="app-version">Phase 1</span>
-        </div>
-        <div className="header-right">
-          {/* Phase 2で追加予定 */}
-          {/* <button className="header-btn">Figma連携</button>
-          <button className="header-btn">⚙️</button> */}
+          <span className="app-version">Phase 3</span>
         </div>
       </header>
 
-      {/* メインコンテンツ（3カラム） */}
       <div className="main-content">
-        
-        {/* 左カラム：保存済みリスト */}
         <aside className="sidebar-left">
           <div className="sidebar-header">
             <div className="sidebar-title">
@@ -237,10 +345,16 @@ function App() {
                 >
                   <div className="component-info">
                     <div className="component-name">{component.name}</div>
+                    {component.category && (
+                      <div style={{ fontSize: '10px', color: '#6b7280', marginTop: '2px' }}>
+                        {component.category}
+                      </div>
+                    )}
                     <div className="component-date">
                       {new Date(component.createdAt).toLocaleDateString('ja-JP')}
                     </div>
                   </div>
+                  
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -257,7 +371,6 @@ function App() {
           </div>
         </aside>
 
-        {/* 中央カラム：エディタ */}
         <main className="main-editor">
           <div className="editor-header">
             <input
@@ -266,6 +379,7 @@ function App() {
               onChange={(e) => setComponentName(e.target.value)}
               placeholder="コンポーネント名（例: MyButton）"
               className="component-name-input"
+              style={{ flex: 1 }}
             />
             <button 
               onClick={handleSave}
@@ -274,6 +388,77 @@ function App() {
               <Save size={16} />
               保存
             </button>
+          </div>
+
+          {/* Phase 3: メタデータ入力 */}
+          <div style={{
+            padding: '12px 16px',
+            background: '#fafafa',
+            borderBottom: '1px solid #e5e7eb',
+            display: 'flex',
+            gap: '12px',
+            flexWrap: 'wrap',
+          }}>
+            <div style={{ flex: '0 0 150px' }}>
+              <label style={{ fontSize: '12px', color: '#6b7280', display: 'block', marginBottom: '4px' }}>
+                カテゴリ
+              </label>
+              <select
+                value={componentCategory}
+                onChange={(e) => setComponentCategory(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '6px 8px',
+                  fontSize: '13px',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '4px',
+                  background: 'white',
+                }}
+              >
+                <option value="">選択なし</option>
+                {categories.map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ flex: '1 1 200px' }}>
+              <label style={{ fontSize: '12px', color: '#6b7280', display: 'block', marginBottom: '4px' }}>
+                タグ（カンマ区切り）
+              </label>
+              <input
+                type="text"
+                value={componentTags}
+                onChange={(e) => setComponentTags(e.target.value)}
+                placeholder="例: primary, large, rounded"
+                style={{
+                  width: '100%',
+                  padding: '6px 8px',
+                  fontSize: '13px',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '4px',
+                }}
+              />
+            </div>
+
+            <div style={{ flex: '1 1 100%' }}>
+              <label style={{ fontSize: '12px', color: '#6b7280', display: 'block', marginBottom: '4px' }}>
+                説明
+              </label>
+              <input
+                type="text"
+                value={componentDescription}
+                onChange={(e) => setComponentDescription(e.target.value)}
+                placeholder="このコンポーネントの説明を入力"
+                style={{
+                  width: '100%',
+                  padding: '6px 8px',
+                  fontSize: '13px',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '4px',
+                }}
+              />
+            </div>
           </div>
           
           <textarea
@@ -285,7 +470,6 @@ function App() {
           />
         </main>
 
-        {/* 右カラム：プレビュー＋データ入力 */}
         <aside className="sidebar-right">
           <div className="preview-header">
             <Eye size={16} />
@@ -297,7 +481,7 @@ function App() {
               <iframe
                 srcDoc={previewHtml}
                 className="preview-iframe"
-                sandbox="allow-scripts"
+                sandbox="allow-scripts allow-same-origin"
                 title="Component Preview"
               />
             ) : (
@@ -307,14 +491,64 @@ function App() {
             )}
           </div>
 
-          {/* データ入力エリア */}
+          {previewHtml && selectedComponent && (
+            <div style={{ 
+              padding: '12px 16px', 
+              borderTop: '1px solid #e5e7eb', 
+              background: '#fafafa',
+              display: 'flex',
+              gap: '8px',
+              alignItems: 'center'
+            }}>
+              <button
+                onClick={() => handleCopyToFigma(selectedComponent, 'svg')}
+                disabled={copyStatus === 'loading'}
+                style={{
+                  padding: '8px 16px',
+                  fontSize: '13px',
+                  background: copyStatus === 'success' ? '#10b981' : '#3b82f6',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: copyStatus === 'loading' ? 'wait' : 'pointer',
+                  fontWeight: '500',
+                  opacity: copyStatus === 'loading' ? 0.6 : 1,
+                }}
+              >
+                {copyStatus === 'loading' ? '変換中...' : copyStatus === 'success' ? '✓ コピー完了' : 'SVGでコピー'}
+              </button>
+              
+              <button
+                onClick={() => handleCopyToFigma(selectedComponent, 'png')}
+                disabled={copyStatus === 'loading'}
+                style={{
+                  padding: '8px 16px',
+                  fontSize: '13px',
+                  background: copyStatus === 'success' ? '#10b981' : '#3b82f6',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: copyStatus === 'loading' ? 'wait' : 'pointer',
+                  fontWeight: '500',
+                  opacity: copyStatus === 'loading' ? 0.6 : 1,
+                }}
+              >
+                {copyStatus === 'loading' ? '変換中...' : copyStatus === 'success' ? '✓ コピー完了' : 'PNGでコピー'}
+              </button>
+              
+              <span style={{ fontSize: '12px', color: '#666', marginLeft: '8px' }}>
+                {copyStatus === 'success' ? 'Figmaでペーストしてください' : 'プレビューをFigmaにコピー'}
+              </span>
+            </div>
+          )}
+
           <div className="data-input-section">
             <div className="data-input-header">
               <button 
                 className="data-toggle-btn"
                 onClick={() => setShowDataInput(!showDataInput)}
               >
-                📊 データ入力
+                データ入力
                 {showDataInput ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
               </button>
               <button 
@@ -337,16 +571,36 @@ function App() {
                 />
                 {dataError && (
                   <div className="data-error">
-                    ⚠️ {dataError}
+                    {dataError}
                   </div>
                 )}
                 <div className="data-hint">
-                  💡 JSON形式でpropsを指定できます
+                  JSON形式でpropsを指定できます
                 </div>
               </>
             )}
           </div>
         </aside>
+      </div>
+
+      <div style={{ 
+        position: 'absolute', 
+        left: '-9999px', 
+        top: '-9999px',
+        width: '800px',
+        background: 'white',
+        padding: '20px'
+      }}>
+        {renderingComponent && (
+          <div>
+            <iframe
+              srcDoc={generatePreviewForComponent(renderingComponent)}
+              style={{ width: '100%', height: '600px', border: 'none' }}
+              sandbox="allow-scripts allow-same-origin"
+              title="Hidden Render"
+            />
+          </div>
+        )}
       </div>
     </div>
   );
