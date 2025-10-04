@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Code, Eye, Save, Trash2, FolderOpen, ChevronDown, ChevronUp } from 'lucide-react';
+import { Code, Eye, Save, Trash2, FolderOpen, ChevronDown, ChevronUp, Search, X } from 'lucide-react';
 import './App.css';
 import { copyElementAsSVG, copyElementAsPNG } from './utils/figmaExport';
 
@@ -29,6 +29,10 @@ function App() {
   const [renderingComponent, setRenderingComponent] = useState<SavedComponent | null>(null);
   const [copyStatus, setCopyStatus] = useState<'idle' | 'loading' | 'success'>('idle');
 
+  // Phase 4: 検索・フィルター用
+  const [searchText, setSearchText] = useState<string>('');
+  const [filterCategory, setFilterCategory] = useState<string>('');
+
   // カテゴリの選択肢
   const categories = ['Button', 'Card', 'Form', 'Layout', 'Navigation', 'Other'];
 
@@ -46,6 +50,19 @@ function App() {
   const saveToLocalStorage = (components: SavedComponent[]) => {
     localStorage.setItem('componentBridge_components', JSON.stringify(components));
   };
+
+  // Phase 4: フィルタリングロジック
+  const filteredComponents = savedComponents.filter((component) => {
+    // テキスト検索
+    const matchesSearch = searchText === '' || 
+      component.name.toLowerCase().includes(searchText.toLowerCase()) ||
+      component.description?.toLowerCase().includes(searchText.toLowerCase());
+    
+    // カテゴリフィルター
+    const matchesCategory = filterCategory === '' || component.category === filterCategory;
+    
+    return matchesSearch && matchesCategory;
+  });
 
   const handleSave = () => {
     if (!componentName.trim()) {
@@ -114,20 +131,23 @@ function App() {
     setComponentDescription('');
   };
 
+  // Phase 4: フィルターをクリア
+  const clearFilters = () => {
+    setSearchText('');
+    setFilterCategory('');
+  };
+
   // Phase 2: Figmaコピー機能
   const handleCopyToFigma = async (component: SavedComponent, format: 'svg' | 'png') => {
     try {
       setCopyStatus('loading');
       console.log('Figmaコピー開始:', component.name, format);
       
-      // レンダリング前にクリア
       setRenderingComponent(null);
       await new Promise(resolve => setTimeout(resolve, 100));
       
-      // 一時的にコンポーネントをレンダリング
       setRenderingComponent(component);
       
-      // iframeのレンダリングを待つ
       await new Promise(resolve => setTimeout(resolve, 1500));
       
       const hiddenIframe = document.querySelector('iframe[title="Hidden Render"]') as HTMLIFrameElement;
@@ -138,7 +158,6 @@ function App() {
         return;
       }
 
-      // iframe内のコンテンツを取得
       const iframeBody = hiddenIframe.contentDocument.body;
       const rootDiv = iframeBody.querySelector('#root');
 
@@ -148,7 +167,6 @@ function App() {
         return;
       }
 
-      // root内の実際のReactコンポーネントをコピー
       if (format === 'svg') {
         await copyElementAsSVG(rootDiv.firstElementChild as HTMLElement);
       } else {
@@ -162,7 +180,6 @@ function App() {
       console.error('コピーエラー:', error);
       setCopyStatus('idle');
     } finally {
-      // クリーンアップ
       setTimeout(() => {
         setRenderingComponent(null);
       }, 100);
@@ -259,7 +276,6 @@ function App() {
     }
   };
 
-  // Phase 2: 保存済みコンポーネント用のプレビュー生成
   const generatePreviewForComponent = (component: SavedComponent): string => {
     try {
       return `
@@ -311,7 +327,7 @@ function App() {
       <header className="app-header">
         <div className="header-left">
           <h1 className="app-title">ComponentBridge</h1>
-          <span className="app-version">Phase 3</span>
+          <span className="app-version">Phase 4</span>
         </div>
       </header>
 
@@ -330,14 +346,116 @@ function App() {
               ＋
             </button>
           </div>
+
+          {/* Phase 4: 検索・フィルターUI */}
+          <div style={{
+            padding: '12px',
+            borderBottom: '1px solid #e5e7eb',
+            background: '#fafafa',
+          }}>
+            {/* 検索ボックス */}
+            <div style={{ position: 'relative', marginBottom: '8px' }}>
+              <Search size={14} style={{
+                position: 'absolute',
+                left: '8px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                color: '#9ca3af',
+              }} />
+              <input
+                type="text"
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                placeholder="検索..."
+                style={{
+                  width: '100%',
+                  padding: '6px 8px 6px 28px',
+                  fontSize: '13px',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '4px',
+                }}
+              />
+              {searchText && (
+                <button
+                  onClick={() => setSearchText('')}
+                  style={{
+                    position: 'absolute',
+                    right: '6px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: '2px',
+                    color: '#9ca3af',
+                  }}
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+
+            {/* カテゴリフィルター */}
+            <select
+              value={filterCategory}
+              onChange={(e) => setFilterCategory(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '6px 8px',
+                fontSize: '13px',
+                border: '1px solid #d1d5db',
+                borderRadius: '4px',
+                background: 'white',
+              }}
+            >
+              <option value="">全カテゴリ</option>
+              {categories.map(cat => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
+
+            {/* フィルタークリア */}
+            {(searchText || filterCategory) && (
+              <button
+                onClick={clearFilters}
+                style={{
+                  width: '100%',
+                  marginTop: '8px',
+                  padding: '4px 8px',
+                  fontSize: '11px',
+                  color: '#6b7280',
+                  background: 'white',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                }}
+              >
+                フィルタークリア
+              </button>
+            )}
+
+            {/* 検索結果件数 */}
+            <div style={{
+              marginTop: '8px',
+              fontSize: '11px',
+              color: '#6b7280',
+              textAlign: 'center',
+            }}>
+              {filteredComponents.length} 件 / {savedComponents.length} 件
+            </div>
+          </div>
           
           <div className="component-list">
-            {savedComponents.length === 0 ? (
+            {filteredComponents.length === 0 ? (
               <div className="empty-state">
-                コンポーネントを<br/>作成してみましょう
+                {savedComponents.length === 0 ? (
+                  <>コンポーネントを<br/>作成してみましょう</>
+                ) : (
+                  <>該当する<br/>コンポーネントが<br/>ありません</>
+                )}
               </div>
             ) : (
-              savedComponents.map((component) => (
+              filteredComponents.map((component) => (
                 <div
                   key={component.id}
                   className={`component-item ${selectedComponent?.id === component.id ? 'active' : ''}`}
@@ -390,7 +508,6 @@ function App() {
             </button>
           </div>
 
-          {/* Phase 3: メタデータ入力 */}
           <div style={{
             padding: '12px 16px',
             background: '#fafafa',
