@@ -78,7 +78,7 @@ body {
   overflow: hidden;
 }
 
-/* 左サイドバー：保存済みリスト（レスポンシブ） */
+/* 左サイドバー */
 .sidebar-left {
   width: clamp(200px, 15vw, 280px);
   background: white;
@@ -197,7 +197,7 @@ body {
   line-height: 1.6;
 }
 
-/* 中央エディタ（可変幅） */
+/* 中央エディタ */
 .main-editor {
   flex: 1;
   display: flex;
@@ -250,20 +250,151 @@ body {
   background: #2563eb;
 }
 
-.code-editor {
-  flex: 1;
-  width: 100%;
-  padding: 20px;
-  border: none;
-  outline: none;
-  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
-  font-size: 14px;
-  line-height: 1.6;
-  resize: none;
-  background: #ffffff;
+/* エラーコンソール */
+.error-console-section {
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  max-height: 300px;
+  background: #f9fafb;
+  transition: max-height 0.3s ease;
 }
 
-/* 右サイドバー：プレビュー（レスポンシブ） */
+.error-console-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  background: #ffffff;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.error-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: #374151;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0;
+  transition: color 0.15s;
+}
+
+.error-toggle-btn:hover {
+  color: #111827;
+}
+
+.error-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  background: #dc2626;
+  color: white;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.btn-clear-errors {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  background: #ffffff;
+  color: #6b7280;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-clear-errors:hover {
+  background: #f9fafb;
+  color: #374151;
+  border-color: #9ca3af;
+}
+
+.error-console-content {
+  flex: 1;
+  overflow-y: auto;
+  max-height: 250px;
+  background: #f9fafb;
+}
+
+.error-empty {
+  text-align: center;
+  color: #9ca3af;
+  font-size: 13px;
+  padding: 40px 20px;
+}
+
+.error-list {
+  padding: 8px;
+}
+
+.error-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  margin-bottom: 8px;
+  background: #ffffff;
+  border-radius: 6px;
+  border-left: 3px solid;
+  font-size: 13px;
+  line-height: 1.5;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.error-item.error-compile {
+  border-color: #dc2626;
+}
+
+.error-item.error-runtime {
+  border-color: #f59e0b;
+}
+
+.error-type-badge {
+  display: inline-block;
+  width: fit-content;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.error-compile .error-type-badge {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.error-runtime .error-type-badge {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.error-message {
+  color: #1f2937;
+  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+  word-break: break-word;
+}
+
+.error-time {
+  font-size: 11px;
+  color: #9ca3af;
+  font-family: monospace;
+}
+
+/* 右サイドバー */
 .sidebar-right {
   width: clamp(350px, 35vw, 700px);
   background: white;
@@ -408,33 +539,41 @@ body {
 
 /* スクロールバーのスタイル */
 .component-list::-webkit-scrollbar,
-.code-editor::-webkit-scrollbar,
+.error-console-content::-webkit-scrollbar,
 .data-input-area::-webkit-scrollbar {
   width: 8px;
 }
 
-.component-list::-webkit-scrollbar-track,
-.code-editor::-webkit-scrollbar-track,
-.data-input-area::-webkit-scrollbar-track {
+.component-list::-webkit-scrollbar-track {
   background: #f3f4f6;
 }
 
-.component-list::-webkit-scrollbar-thumb,
-.code-editor::-webkit-scrollbar-thumb,
-.data-input-area::-webkit-scrollbar-thumb {
+.error-console-content::-webkit-scrollbar-track,
+.data-input-area::-webkit-scrollbar-track {
+  background: #2d2d2d;
+}
+
+.component-list::-webkit-scrollbar-thumb {
   background: #d1d5db;
   border-radius: 4px;
 }
 
-.component-list::-webkit-scrollbar-thumb:hover,
-.code-editor::-webkit-scrollbar-thumb:hover,
-.data-input-area::-webkit-scrollbar-thumb:hover {
+.error-console-content::-webkit-scrollbar-thumb,
+.data-input-area::-webkit-scrollbar-thumb {
+  background: #4e4e4e;
+  border-radius: 4px;
+}
+
+.component-list::-webkit-scrollbar-thumb:hover {
   background: #9ca3af;
 }
 
-/* レスポンシブ対応 */
+.error-console-content::-webkit-scrollbar-thumb:hover,
+.data-input-area::-webkit-scrollbar-thumb:hover {
+  background: #5e5e5e;
+}
 
-/* 大画面（1920px以上）：より広いプレビュー */
+/* レスポンシブ対応 */
 @media (min-width: 1920px) {
   .sidebar-left {
     width: clamp(250px, 12vw, 300px);
@@ -445,7 +584,6 @@ body {
   }
 }
 
-/* 中画面（1200px-1920px）：バランス良く */
 @media (min-width: 1200px) and (max-width: 1919px) {
   .sidebar-left {
     width: clamp(220px, 15vw, 280px);
@@ -456,7 +594,6 @@ body {
   }
 }
 
-/* 小画面（1024px-1199px）：少しコンパクトに */
 @media (min-width: 1024px) and (max-width: 1199px) {
   .sidebar-left {
     width: 200px;
@@ -465,13 +602,8 @@ body {
   .sidebar-right {
     width: clamp(320px, 30vw, 450px);
   }
-  
-  .code-editor {
-    font-size: 13px;
-  }
 }
 
-/* タブレット（768px-1023px）：2カラムレイアウト */
 @media (max-width: 1023px) {
   .main-content {
     flex-direction: column;
@@ -507,9 +639,12 @@ body {
     border-left: none;
     border-top: 1px solid #e5e7eb;
   }
+  
+  .error-console-section {
+    max-height: 200px;
+  }
 }
 
-/* モバイル（767px以下）：縦積みレイアウト */
 @media (max-width: 767px) {
   .app-header {
     padding: 10px 12px;
@@ -570,11 +705,6 @@ body {
     font-size: 13px;
   }
   
-  .code-editor {
-    padding: 12px;
-    font-size: 12px;
-  }
-  
   .sidebar-right {
     height: 250px;
   }
@@ -586,5 +716,9 @@ body {
   
   .preview-container {
     padding: 12px;
+  }
+  
+  .error-console-section {
+    max-height: 150px;
   }
 }
