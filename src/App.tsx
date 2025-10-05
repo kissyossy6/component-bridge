@@ -9,6 +9,7 @@ interface SavedComponent {
   id: number;
   name: string;
   code: string;
+  framework: 'react' | 'vue' | 'svelte' | 'html';
   createdAt: string;
   category?: string;
   tags?: string[];
@@ -44,9 +45,13 @@ function App() {
 
   const [searchText, setSearchText] = useState<string>('');
   const [filterCategory, setFilterCategory] = useState<string>('');
+  const [filterFramework, setFilterFramework] = useState<string>('');
   const [templateFilterCategory, setTemplateFilterCategory] = useState<string>('');
 
   const [showTemplateModal, setShowTemplateModal] = useState<boolean>(false);
+
+  // 現在選択中の言語
+  const [currentFramework, setCurrentFramework] = useState<'react' | 'vue' | 'svelte' | 'html'>('react');
 
   // エラーコンソール用
   const [errors, setErrors] = useState<ErrorMessage[]>([]);
@@ -55,6 +60,12 @@ function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const categories = ['Button', 'Card', 'Form', 'Layout', 'Navigation', 'Other'];
+  const frameworks = [
+    { value: 'react', label: 'React' },
+    { value: 'vue', label: 'Vue' },
+    { value: 'svelte', label: 'Svelte' },
+    { value: 'html', label: 'HTML/JS' },
+  ];
 
   useEffect(() => {
     const saved = localStorage.getItem('componentBridge_components');
@@ -104,7 +115,8 @@ function App() {
     const matchesSearch = searchText === '' || 
       component.name.toLowerCase().includes(searchText.toLowerCase());
     const matchesCategory = filterCategory === '' || component.category === filterCategory;
-    return matchesSearch && matchesCategory;
+    const matchesFramework = filterFramework === '' || component.framework === filterFramework;
+    return matchesSearch && matchesCategory && matchesFramework;
   });
 
   const handleSaveOrUpdate = () => {
@@ -124,6 +136,7 @@ function App() {
               ...comp,
               name: componentName,
               code: code,
+              framework: currentFramework, // 言語も更新
               category: componentCategory || undefined,
               tags: componentTags ? componentTags.split(',').map(t => t.trim()).filter(t => t) : undefined,
               description: componentDescription || undefined,
@@ -140,6 +153,7 @@ function App() {
         id: Date.now(),
         name: componentName,
         code: code,
+        framework: currentFramework,
         createdAt: new Date().toISOString(),
         category: componentCategory || undefined,
         tags: componentTags ? componentTags.split(',').map(t => t.trim()).filter(t => t) : undefined,
@@ -165,6 +179,7 @@ function App() {
     setSelectedComponent(component);
     setComponentName(component.name);
     setCode(component.code);
+    setCurrentFramework(component.framework); // 言語を切り替え
     setComponentCategory(component.category || '');
     setComponentTags(component.tags?.join(', ') || '');
     setComponentDescription(component.description || '');
@@ -201,6 +216,7 @@ function App() {
   const clearFilters = () => {
     setSearchText('');
     setFilterCategory('');
+    setFilterFramework('');
   };
 
   const handleExport = () => {
@@ -256,6 +272,11 @@ function App() {
     setComponentCategory(template.category);
     setComponentDescription(template.description);
     
+    // テンプレートに言語情報があればそれを設定
+    if ((template as any).framework) {
+      setCurrentFramework((template as any).framework);
+    }
+    
     if (template.sampleData) {
       setSimulationData(template.sampleData);
     }
@@ -293,18 +314,31 @@ function App() {
       }
 
       const iframeBody = hiddenIframe.contentDocument.body;
-      const rootDiv = iframeBody.querySelector('#root');
+      
+      // 言語ごとに異なるセレクタを使用
+      let targetElement: Element | null = null;
+      
+      if (component.framework === 'vue') {
+        targetElement = iframeBody.querySelector('#app');
+      } else if (component.framework === 'html') {
+        // body全体をコピー（最初の子要素を取得）
+        targetElement = iframeBody.children[0] || iframeBody;
+      } else {
+        // React
+        const rootDiv = iframeBody.querySelector('#root');
+        targetElement = rootDiv?.firstElementChild || null;
+      }
 
-      if (!rootDiv || !rootDiv.firstElementChild) {
+      if (!targetElement) {
         console.error('コンテンツが見つかりません');
         setCopyStatus('idle');
         return;
       }
 
       if (format === 'svg') {
-        await copyElementAsSVG(rootDiv.firstElementChild as HTMLElement);
+        await copyElementAsSVG(targetElement as HTMLElement);
       } else {
-        await copyElementAsPNG(rootDiv.firstElementChild as HTMLElement);
+        await copyElementAsPNG(targetElement as HTMLElement);
       }
       
       setCopyStatus('success');
@@ -342,15 +376,25 @@ function App() {
   };
 
   const insertSampleData = () => {
-    const sample = {
-      title: "サンプルタイトル",
-      description: "これはサンプルの説明文です",
-      count: 42,
-      isActive: true
-    };
-    const formatted = JSON.stringify(sample, null, 2);
-    setSimulationData(formatted);
-    setDataError('');
+    // 言語に応じたサンプルデータを挿入
+    if (currentFramework === 'react' || currentFramework === 'vue') {
+      const sample = {
+        title: "サンプルタイトル",
+        description: "これはサンプルの説明文です",
+        count: 42,
+        isActive: true
+      };
+      const formatted = JSON.stringify(sample, null, 2);
+      setSimulationData(formatted);
+      setDataError('');
+    } else if (currentFramework === 'html') {
+      // HTMLはデータ入力不要
+      setSimulationData('{}');
+      alert('HTMLではデータ入力は使用しません');
+    } else if (currentFramework === 'svelte') {
+      setSimulationData('{}');
+      alert('Svelteはブラウザプレビュー非対応です');
+    }
   };
 
   const generatePreview = (): string => {
@@ -365,157 +409,99 @@ function App() {
       propsData = {};
     }
     
+    // 現在選択中のframeworkに応じてプレビューを生成
+    if (currentFramework === 'vue') {
+      return `<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/vue/3.3.4/vue.global.prod.min.js"></script>
+<style>body{margin:0;padding:20px;font-family:system-ui,sans-serif}*{box-sizing:border-box}</style>
+</head><body><div id="app"></div><script>
+const {createApp}=Vue;
+try{${code}
+if(!window.MyComponent)throw new Error('window.MyComponent が定義されていません');
+createApp({template:'<MyComponent v-bind="props"/>',data(){return{props:${JSON.stringify(propsData)}}},components:{MyComponent:window.MyComponent}}).mount('#app');
+}catch(e){document.body.innerHTML='<div style="padding:20px;color:#dc2626;background:#fee2e2;border-radius:8px;font-family:monospace;font-size:13px;">エラー: '+e.message+'</div>';}
+</script></body></html>`;
+    }
+    
+    if (currentFramework === 'html') {
+      return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<style>body{margin:0;padding:20px;font-family:system-ui,sans-serif}*{box-sizing:border-box}</style>
+</head><body>${code}</body></html>`;
+    }
+    
+    if (currentFramework === 'svelte') {
+      return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<style>body{margin:0;padding:20px;font-family:system-ui,sans-serif}*{box-sizing:border-box}</style>
+</head><body><div style="padding:20px;background:#fef3c7;border:2px dashed #f59e0b;border-radius:8px;color:#92400e;text-align:center;">
+<div style="font-size:16px;font-weight:bold;margin-bottom:8px;">⚠️ Svelteプレビュー</div>
+<div>Svelteはブラウザでのコンパイルがサポートされていません</div></div></body></html>`;
+    }
+    
+    // React (デフォルト)
     try {
-      return `
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <meta charset="UTF-8">
-            <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-            <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-            <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
-            <style>
-              body { 
-                margin: 0; 
-                padding: 20px; 
-                font-family: system-ui, -apple-system, sans-serif;
-              }
-              * { box-sizing: border-box; }
-              .empty-render-warning {
-                padding: 20px;
-                background: #fef3c7;
-                border: 2px dashed #f59e0b;
-                border-radius: 8px;
-                color: #92400e;
-                text-align: center;
-                font-size: 14px;
-                line-height: 1.6;
-              }
-            </style>
-          </head>
-          <body>
-            <div id="root"></div>
-            <script type="text/babel">
-              const { useState, useEffect } = React;
-              
-              window.onerror = function(message, source, lineno, colno, error) {
-                window.parent.postMessage({
-                  type: 'runtime-error',
-                  message: message,
-                  line: lineno
-                }, '*');
-                return true;
-              };
-
-              try {
-                ${code}
-                
-                const root = ReactDOM.createRoot(document.getElementById('root'));
-                const componentMatch = \`${code}\`.match(/(?:const|function|class)\\s+(\\w+)/);
-                const ComponentName = componentMatch ? componentMatch[1] : null;
-                
-                const simulationProps = ${JSON.stringify(propsData)};
-                
-                if (ComponentName && window[ComponentName]) {
-                  // コンポーネントをレンダリング
-                  root.render(React.createElement(window[ComponentName], simulationProps));
-                  
-                  // レンダリング後に空かどうかチェック
-                  setTimeout(() => {
-                    const rootElement = document.getElementById('root');
-                    const isEmpty = !rootElement || 
-                                  rootElement.children.length === 0 || 
-                                  (rootElement.children.length === 1 && !rootElement.children[0].textContent.trim() && rootElement.children[0].children.length === 0);
-                    
-                    if (isEmpty) {
-                      window.parent.postMessage({
-                        type: 'empty-render',
-                        message: 'コンポーネントは正常に実行されましたが、何もレンダリングされていません'
-                      }, '*');
-                      
-                      root.render(
-                        React.createElement('div', { className: 'empty-render-warning' }, 
-                          React.createElement('div', { style: { fontSize: '16px', fontWeight: 'bold', marginBottom: '8px' } }, '⚠️ レンダリング結果が空です'),
-                          React.createElement('div', null, 'コンポーネントが null、undefined、または空の要素を返しています。'),
-                          React.createElement('div', { style: { marginTop: '8px', fontSize: '13px' } }, 'return文の内容を確認してください。')
-                        )
-                      );
-                    }
-                  }, 100);
-                } else {
-                  throw new Error('コンポーネントが見つかりません: ' + (ComponentName || '(名前不明)'));
-                }
-              } catch (error) {
-                window.parent.postMessage({
-                  type: 'compile-error',
-                  message: error.message
-                }, '*');
-                
-                const root = ReactDOM.createRoot(document.getElementById('root'));
-                root.render(React.createElement('div', { 
-                  style: { 
-                    padding: '20px', 
-                    color: '#dc2626', 
-                    background: '#fee2e2',
-                    borderRadius: '8px',
-                    fontFamily: 'monospace',
-                    fontSize: '13px'
-                  } 
-                }, 'エラー: ' + error.message));
-              }
-            </script>
-          </body>
-        </html>
-      `;
+      return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<style>body{margin:0;padding:20px;font-family:system-ui,sans-serif}*{box-sizing:border-box}</style>
+</head><body><div id="root"></div><script type="text/babel">
+const {useState,useEffect}=React;
+window.onerror=function(m,s,l){window.parent.postMessage({type:'runtime-error',message:m,line:l},'*');return true;};
+try{${code}
+const root=ReactDOM.createRoot(document.getElementById('root'));
+const m=\`${code}\`.match(/(?:const|function|class)\\s+(\\w+)/);
+const C=m?m[1]:null;
+const p=${JSON.stringify(propsData)};
+if(C&&window[C]){root.render(React.createElement(window[C],p));
+setTimeout(()=>{const r=document.getElementById('root');
+const e=!r||r.children.length===0||(r.children.length===1&&!r.children[0].textContent.trim()&&r.children[0].children.length===0);
+if(e)window.parent.postMessage({type:'empty-render',message:'コンポーネントは正常に実行されましたが、何もレンダリングされていません'},'*');},100);
+}else throw new Error('コンポーネントが見つかりません: '+(C||'不明'));
+}catch(e){window.parent.postMessage({type:'compile-error',message:e.message},'*');
+const root=ReactDOM.createRoot(document.getElementById('root'));
+root.render(React.createElement('div',{style:{padding:'20px',color:'#dc2626',background:'#fee2e2',borderRadius:'8px',fontFamily:'monospace',fontSize:'13px'}},'エラー: '+e.message));}
+</script></body></html>`;
     } catch (e) {
       return '';
     }
   };
 
   const generatePreviewForComponent = (component: SavedComponent, propsData = {}): string => {
-    try {
-      return `
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <meta charset="UTF-8">
-            <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-            <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-            <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
-            <style>
-              body { 
-                margin: 0; 
-                padding: 20px; 
-                font-family: system-ui, -apple-system, sans-serif;
-              }
-              * { box-sizing: border-box; }
-            </style>
-          </head>
-          <body>
-            <div id="root"></div>
-            <script type="text/babel">
-              const { useState, useEffect } = React;
-              
-              ${component.code}
-              
-              const root = ReactDOM.createRoot(document.getElementById('root'));
-              const componentMatch = \`${component.code}\`.match(/(?:const|function|class)\\s+(\\w+)/);
-              const ComponentName = componentMatch ? componentMatch[1] : null;
-              
-              const simulationProps = ${JSON.stringify(propsData)};
-              
-              if (ComponentName && window[ComponentName]) {
-                root.render(React.createElement(window[ComponentName], simulationProps));
-              } else {
-                root.render(React.createElement('div', null, 'コンポーネントが見つかりません'));
-              }
-            </script>
-          </body>
-        </html>
-      `;
-    } catch (e) {
-      return '';
+    const fw = component.framework || 'react';
+    
+    if (fw === 'vue') {
+      return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/vue/3.3.4/vue.global.prod.min.js"></script>
+<style>body{margin:0;padding:20px;font-family:system-ui,sans-serif}*{box-sizing:border-box}</style>
+</head><body><div id="app"></div><script>
+const {createApp}=Vue;
+${component.code}
+if(window.MyComponent){
+createApp({template:'<MyComponent v-bind="props"/>',data(){return{props:${JSON.stringify(propsData)}}},components:{MyComponent:window.MyComponent}}).mount('#app');
+}</script></body></html>`;
     }
+    
+    if (fw === 'html') {
+      return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<style>body{margin:0;padding:20px;font-family:system-ui,sans-serif}*{box-sizing:border-box}</style>
+</head><body>${component.code}</body></html>`;
+    }
+    
+    // React
+    return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<style>body{margin:0;padding:20px;font-family:system-ui,sans-serif}*{box-sizing:border-box}</style>
+</head><body><div id="root"></div><script type="text/babel">
+const {useState,useEffect}=React;
+${component.code}
+const root=ReactDOM.createRoot(document.getElementById('root'));
+const m=\`${component.code}\`.match(/(?:const|function|class)\\s+(\\w+)/);
+const C=m?m[1]:null;
+if(C&&window[C])root.render(React.createElement(window[C],${JSON.stringify(propsData)}));
+</script></body></html>`;
   };
 
   const previewHtml = generatePreview();
@@ -630,6 +616,7 @@ function App() {
                 border: '1px solid #d1d5db',
                 borderRadius: '4px',
                 background: 'white',
+                marginBottom: '8px',
               }}
             >
               <option value="">全カテゴリ</option>
@@ -638,7 +625,25 @@ function App() {
               ))}
             </select>
 
-            {(searchText || filterCategory) && (
+            <select
+              value={filterFramework}
+              onChange={(e) => setFilterFramework(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '6px 8px',
+                fontSize: '13px',
+                border: '1px solid #d1d5db',
+                borderRadius: '4px',
+                background: 'white',
+              }}
+            >
+              <option value="">全言語</option>
+              {frameworks.map(fw => (
+                <option key={fw.value} value={fw.value}>{fw.label}</option>
+              ))}
+            </select>
+
+            {(searchText || filterCategory || filterFramework) && (
               <button
                 onClick={clearFilters}
                 style={{
@@ -685,11 +690,22 @@ function App() {
                 >
                   <div className="component-info">
                     <div className="component-name">{component.name}</div>
-                    {component.category && (
-                      <div style={{ fontSize: '10px', color: '#6b7280', marginTop: '2px' }}>
-                        {component.category}
-                      </div>
-                    )}
+                    <div style={{ fontSize: '10px', color: '#6b7280', marginTop: '2px', display: 'flex', gap: '6px' }}>
+                      {component.framework && (
+                        <span style={{ 
+                          background: '#eff6ff', 
+                          color: '#2563eb', 
+                          padding: '1px 6px', 
+                          borderRadius: '3px',
+                          fontWeight: '600'
+                        }}>
+                          {frameworks.find(f => f.value === component.framework)?.label}
+                        </span>
+                      )}
+                      {component.category && (
+                        <span>{component.category}</span>
+                      )}
+                    </div>
                     <div className="component-date">
                       {new Date(component.createdAt).toLocaleDateString('ja-JP')}
                     </div>
@@ -780,6 +796,28 @@ function App() {
           }}>
             <div style={{ flex: '0 0 150px' }}>
               <label style={{ fontSize: '12px', color: '#6b7280', display: 'block', marginBottom: '4px' }}>
+                言語
+              </label>
+              <select
+                value={currentFramework}
+                onChange={(e) => setCurrentFramework(e.target.value as any)}
+                style={{
+                  width: '100%',
+                  padding: '6px 8px',
+                  fontSize: '13px',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '4px',
+                  background: 'white',
+                }}
+              >
+                {frameworks.map(fw => (
+                  <option key={fw.value} value={fw.value}>{fw.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ flex: '0 0 150px' }}>
+              <label style={{ fontSize: '12px', color: '#6b7280', display: 'block', marginBottom: '4px' }}>
                 カテゴリ
               </label>
               <select
@@ -844,7 +882,8 @@ function App() {
           <div style={{ flex: 1, minHeight: 0 }}>
             <Editor
               height="100%"
-              defaultLanguage="javascript"
+              defaultLanguage={currentFramework === 'react' ? 'javascript' : 'html'}
+              language={currentFramework === 'react' ? 'javascript' : 'html'}
               value={code}
               onChange={(value) => {
                 setCode(value || '');
@@ -956,6 +995,7 @@ function App() {
                     id: generateUUID(),
                     name: componentName || 'Untitled',
                     code: code,
+                    framework: currentFramework,
                     createdAt: new Date().toISOString(),
                     category: componentCategory || undefined,
                     tags: componentTags ? componentTags.split(',').map(t => t.trim()).filter(t => t) : undefined,
@@ -986,6 +1026,7 @@ function App() {
                     id: generateUUID(),
                     name: componentName || 'Untitled',
                     code: code,
+                    framework: currentFramework,
                     createdAt: new Date().toISOString(),
                     category: componentCategory || undefined,
                     tags: componentTags ? componentTags.split(',').map(t => t.trim()).filter(t => t) : undefined,
@@ -1025,16 +1066,18 @@ function App() {
                 データ入力
                 {showDataInput ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
               </button>
-              <button 
-                className="btn-sample"
-                onClick={insertSampleData}
-                title="サンプルデータを挿入"
-              >
-                サンプル
-              </button>
+              {(currentFramework === 'react' || currentFramework === 'vue') && (
+                <button 
+                  className="btn-sample"
+                  onClick={insertSampleData}
+                  title="サンプルデータを挿入"
+                >
+                  サンプル
+                </button>
+              )}
             </div>
             
-            {showDataInput && (
+            {showDataInput && (currentFramework === 'react' || currentFramework === 'vue') && (
               <>
                 <textarea
                   value={simulationData}
@@ -1052,6 +1095,18 @@ function App() {
                   JSON形式でpropsを指定できます
                 </div>
               </>
+            )}
+            
+            {showDataInput && currentFramework === 'html' && (
+              <div style={{ padding: '20px', textAlign: 'center', color: '#6b7280', fontSize: '13px' }}>
+                HTMLではデータ入力は使用しません
+              </div>
+            )}
+            
+            {showDataInput && currentFramework === 'svelte' && (
+              <div style={{ padding: '20px', textAlign: 'center', color: '#6b7280', fontSize: '13px' }}>
+                Svelteはブラウザプレビュー非対応です
+              </div>
             )}
           </div>
         </aside>
@@ -1104,12 +1159,12 @@ function App() {
               </button>
             </div>
 
-            <div style={{ marginBottom: '16px' }}>
+            <div style={{ marginBottom: '16px', display: 'flex', gap: '12px' }}>
               <select
                 value={templateFilterCategory}
                 onChange={(e) => setTemplateFilterCategory(e.target.value)}
                 style={{
-                  width: '100%',
+                  flex: 1,
                   padding: '8px 12px',
                   fontSize: '14px',
                   border: '1px solid #d1d5db',
@@ -1126,7 +1181,11 @@ function App() {
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '16px' }}>
               {templates
-                .filter(template => templateFilterCategory === '' || template.category === templateFilterCategory)
+                .filter(template => {
+                  const matchesCategory = templateFilterCategory === '' || template.category === templateFilterCategory;
+                  const matchesFramework = template.framework === currentFramework;
+                  return matchesCategory && matchesFramework;
+                })
                 .map((template, index) => (
                   <div
                     key={`${template.category}-${template.name}-${index}`}  
