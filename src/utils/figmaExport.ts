@@ -1,5 +1,5 @@
 import { elementToSVG, inlineResources } from 'dom-to-svg';
-import { toPng } from 'html-to-image';
+import html2canvas from 'html2canvas';
 
 /**
  * SVG形式でコピー
@@ -29,7 +29,7 @@ export async function copyElementAsSVG(element: HTMLElement): Promise<boolean> {
 }
 
 /**
- * PNG形式でコピー
+ * PNG形式でコピー（html2canvas使用）
  */
 export async function copyElementAsPNG(element: HTMLElement): Promise<boolean> {
   if (!element) {
@@ -39,16 +39,19 @@ export async function copyElementAsPNG(element: HTMLElement): Promise<boolean> {
   try {
     console.log('🔄 PNG変換開始...');
     
-    const pngDataUrl = await toPng(element, {
-      quality: 1.0,
-      pixelRatio: 4,
-      backgroundColor: '#ffffff',
+    const canvas = await html2canvas(element, {
+      backgroundColor: null,  // 透過背景
+      scale: 3,  // 高解像度
+      logging: false,
+      useCORS: true,  // 追加: 外部リソース対応
     });
     
     console.log('✅ PNG変換完了');
 
-    const response = await fetch(pngDataUrl);
-    const blob = await response.blob();
+    // CanvasをBlobに変換
+    const blob = await new Promise<Blob>((resolve) => {
+      canvas.toBlob((blob) => resolve(blob!), 'image/png');
+    });
     
     console.log(`✅ サイズ: ${(blob.size / 1024).toFixed(1)} KB`);
 

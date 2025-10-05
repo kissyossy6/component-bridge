@@ -12,6 +12,13 @@ interface SavedComponent {
   category?: string;
   tags?: string[];
   description?: string;
+  propsData?: any;
+  simulationData?: string;
+}
+
+// 簡易的なUUID生成関数
+function generateUUID(): number {
+  return Date.now() * 1000 + Math.floor(Math.random() * 1000);
 }
 
 function App() {
@@ -56,25 +63,47 @@ function App() {
   };
 
   const filteredComponents = savedComponents.filter((component) => {
-    const matchesSearch = searchText === '' || 
-      component.name.toLowerCase().includes(searchText.toLowerCase()) ||
-      component.description?.toLowerCase().includes(searchText.toLowerCase());
-    
-    const matchesCategory = filterCategory === '' || component.category === filterCategory;
-    
-    return matchesSearch && matchesCategory;
-  });
+  // 検索バー: コンポーネント名のみ
+  const matchesSearch = searchText === '' || 
+    component.name.toLowerCase().includes(searchText.toLowerCase());
+  
+  // カテゴリ: 完全一致
+  const matchesCategory = filterCategory === '' || component.category === filterCategory;
+  
+  return matchesSearch && matchesCategory;
+});
 
-  const handleSave = () => {
-    if (!componentName.trim()) {
-      alert('コンポーネント名を入力してください');
-      return;
-    }
-    if (!code.trim()) {
-      alert('コードを入力してください');
-      return;
-    }
+  const handleSaveOrUpdate = () => {
+  if (!componentName.trim()) {
+    alert('コンポーネント名を入力してください');
+    return;
+  }
+  if (!code.trim()) {
+    alert('コードを入力してください');
+    return;
+  }
 
+  if (selectedComponent) {
+    // 更新モード
+    const updated = savedComponents.map(comp => 
+      comp.id === selectedComponent.id
+        ? {
+            ...comp,
+            name: componentName,
+            code: code,
+            category: componentCategory || undefined,
+            tags: componentTags ? componentTags.split(',').map(t => t.trim()).filter(t => t) : undefined,
+            description: componentDescription || undefined,
+            simulationData: simulationData || undefined,
+          }
+        : comp
+    );
+    setSavedComponents(updated);
+    saveToLocalStorage(updated);
+    setSelectedComponent(null); // 選択解除
+    alert('更新しました！');
+  } else {
+    // 新規保存モード
     const newComponent: SavedComponent = {
       id: Date.now(),
       name: componentName,
@@ -83,18 +112,22 @@ function App() {
       category: componentCategory || undefined,
       tags: componentTags ? componentTags.split(',').map(t => t.trim()).filter(t => t) : undefined,
       description: componentDescription || undefined,
+      simulationData: simulationData || undefined,
     };
 
     const updated = [...savedComponents, newComponent];
     setSavedComponents(updated);
     saveToLocalStorage(updated);
-    
     alert('保存しました！');
-    setComponentName('');
-    setComponentCategory('');
-    setComponentTags('');
-    setComponentDescription('');
-  };
+  }
+  
+  setComponentName('');
+  setComponentCategory('');
+  setComponentTags('');
+  setComponentDescription('');
+  setCode('');
+  setSimulationData('{}');
+};
 
   const handleLoad = (component: SavedComponent) => {
     setSelectedComponent(component);
@@ -103,6 +136,7 @@ function App() {
     setComponentCategory(component.category || '');
     setComponentTags(component.tags?.join(', ') || '');
     setComponentDescription(component.description || '');
+    setSimulationData(component.simulationData || '{}');
   };
 
   const handleDelete = (id: number) => {
@@ -159,18 +193,19 @@ function App() {
     try {
       const imported = JSON.parse(e.target?.result as string);
       if (Array.isArray(imported)) {
-        const confirmed = confirm(`${imported.length}件のコンポーネントをインポートしますか？\n既存のデータに追加されます。`);
+        const confirmed = confirm(`${imported.length}件のコンポーネントをインポートしますか?\n既存のデータに追加されます。`);
         if (confirmed) {
-          // 各アイテムに一意のIDを生成
-          const withNewIds = imported.map((comp, index) => ({
-            ...comp,
-            id: Date.now() + index, // indexを加算して重複を完全に回避
-            createdAt: new Date().toISOString(),
-          }));
+          // タイムスタンプをベースに確実に一意なIDを生成
+          const baseTime = Date.now();
+          const withNewIds = imported.map((comp, idx) => ({
+  ...comp,
+  id: baseTime + (idx + 1) * 10000 + Math.floor(Math.random() * 1000),
+  createdAt: new Date().toISOString(),
+}));
           const updated = [...savedComponents, ...withNewIds];
           setSavedComponents(updated);
           saveToLocalStorage(updated);
-          alert('インポートしました！');
+          alert('インポートしました!');
         }
       } else {
         alert('無効なファイル形式です');
@@ -204,11 +239,20 @@ function App() {
   const handleCopyToFigma = async (component: SavedComponent, format: 'svg' | 'png') => {
     try {
       setCopyStatus('loading');
+
+      let propsData = {};
+    try {
+      if (simulationData.trim()) {
+        propsData = JSON.parse(simulationData);
+      }
+    } catch (e) {
+      propsData = {};
+    }
       
       setRenderingComponent(null);
       await new Promise(resolve => setTimeout(resolve, 100));
       
-      setRenderingComponent(component);
+      setRenderingComponent({ ...component, propsData });
       
       await new Promise(resolve => setTimeout(resolve, 1500));
       
@@ -224,10 +268,18 @@ function App() {
       const rootDiv = iframeBody.querySelector('#root');
 
       if (!rootDiv || !rootDiv.firstElementChild) {
+        console.log('hiddenIframe:', hiddenIframe);
+        console.log('contentDocument:', hiddenIframe?.contentDocument);
+        console.log('rootDiv:', rootDiv);
+        console.log('firstElementChild:', rootDiv?.firstElementChild);
         console.error('コンテンツが見つかりません');
         setCopyStatus('idle');
         return;
       }
+      console.log('=== コピー対象の確認 ===');
+      console.log('要素:', rootDiv.firstElementChild);
+      console.log('HTML:', rootDiv.firstElementChild?.outerHTML);
+      console.log('========================');
 
       if (format === 'svg') {
         await copyElementAsSVG(rootDiv.firstElementChild as HTMLElement);
@@ -338,49 +390,51 @@ function App() {
     }
   };
 
-  const generatePreviewForComponent = (component: SavedComponent): string => {
-    try {
-      return `
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <meta charset="UTF-8">
-            <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-            <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-            <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
-            <style>
-              body { 
-                margin: 0; 
-                padding: 20px; 
-                font-family: system-ui, -apple-system, sans-serif;
-              }
-              * { box-sizing: border-box; }
-            </style>
-          </head>
-          <body>
-            <div id="root"></div>
-            <script type="text/babel">
-              const { useState, useEffect } = React;
-              
-              ${component.code}
-              
-              const root = ReactDOM.createRoot(document.getElementById('root'));
-              const componentMatch = \`${component.code}\`.match(/(?:const|function|class)\\s+(\\w+)/);
-              const ComponentName = componentMatch ? componentMatch[1] : null;
-              
-              if (ComponentName && window[ComponentName]) {
-                root.render(React.createElement(window[ComponentName], {}));
-              } else {
-                root.render(React.createElement('div', null, 'コンポーネントが見つかりません'));
-              }
-            </script>
-          </body>
-        </html>
-      `;
-    } catch (e) {
-      return '';
-    }
-  };
+  const generatePreviewForComponent = (component: SavedComponent, propsData = {}): string => {
+  try {
+    return `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+          <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+          <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+          <style>
+            body { 
+              margin: 0; 
+              padding: 20px; 
+              font-family: system-ui, -apple-system, sans-serif;
+            }
+            * { box-sizing: border-box; }
+          </style>
+        </head>
+        <body>
+          <div id="root"></div>
+          <script type="text/babel">
+            const { useState, useEffect } = React;
+            
+            ${component.code}
+            
+            const root = ReactDOM.createRoot(document.getElementById('root'));
+            const componentMatch = \`${component.code}\`.match(/(?:const|function|class)\\s+(\\w+)/);
+            const ComponentName = componentMatch ? componentMatch[1] : null;
+            
+            const simulationProps = ${JSON.stringify(propsData)};
+            
+            if (ComponentName && window[ComponentName]) {
+              root.render(React.createElement(window[ComponentName], simulationProps));
+            } else {
+              root.render(React.createElement('div', null, 'コンポーネントが見つかりません'));
+            }
+          </script>
+        </body>
+      </html>
+    `;
+  } catch (e) {
+    return '';
+  }
+};
 
   const previewHtml = generatePreview();
 
@@ -427,12 +481,16 @@ function App() {
               <span>保存済み</span>
             </div>
             <button 
-              onClick={handleNew}
-              className="btn-new"
-              title="新規作成"
-            >
-              ＋
-            </button>
+  onClick={handleNew}
+  className="btn-new"
+  title="新規作成"
+  style={{
+    background: selectedComponent ? '#10b981' : '#3b82f6',
+    color: 'white',
+  }}
+>
+  ＋
+</button>
           </div>
 
           <div style={{
@@ -574,40 +632,63 @@ function App() {
 
         <main className="main-editor">
           <div className="editor-header">
-            <input
-              type="text"
-              value={componentName}
-              onChange={(e) => setComponentName(e.target.value)}
-              placeholder="コンポーネント名（例: MyButton）"
-              className="component-name-input"
-              style={{ flex: 1 }}
-            />
-            <button 
-              onClick={() => setShowTemplateModal(true)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '10px 16px',
-                background: 'white',
-                border: '1px solid #d1d5db',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontSize: '14px',
-                transition: 'all 0.15s',
-              }}
-            >
-              <FileText size={16} />
-              テンプレート
-            </button>
-            <button 
-              onClick={handleSave}
-              className="btn-save"
-            >
-              <Save size={16} />
-              保存
-            </button>
-          </div>
+  <input
+    type="text"
+    value={componentName}
+    onChange={(e) => setComponentName(e.target.value)}
+    placeholder="コンポーネント名(例: MyButton)"
+    className="component-name-input"
+    style={{ flex: 1 }}
+  />
+  
+  {/* 新規作成ボタン（選択中は表示） */}
+  {selectedComponent && (
+    <button 
+      onClick={handleNew}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px',
+        padding: '10px 16px',
+        background: 'white',
+        border: '1px solid #d1d5db',
+        borderRadius: '6px',
+        cursor: 'pointer',
+        fontSize: '14px',
+        transition: 'all 0.15s',
+      }}
+    >
+      ＋ 新規作成
+    </button>
+  )}
+  
+  <button 
+    onClick={() => setShowTemplateModal(true)}
+    style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: '6px',
+      padding: '10px 16px',
+      background: 'white',
+      border: '1px solid #d1d5db',
+      borderRadius: '6px',
+      cursor: 'pointer',
+      fontSize: '14px',
+      transition: 'all 0.15s',
+    }}
+  >
+    <FileText size={16} />
+    テンプレート
+  </button>
+  
+  <button 
+    onClick={handleSaveOrUpdate}
+    className="btn-save"
+  >
+    <Save size={16} />
+    {selectedComponent ? '更新' : '保存'}
+  </button>
+</div>
 
           <div style={{
             padding: '12px 16px',
@@ -642,7 +723,7 @@ function App() {
 
             <div style={{ flex: '1 1 200px' }}>
               <label style={{ fontSize: '12px', color: '#6b7280', display: 'block', marginBottom: '4px' }}>
-                タグ（カンマ区切り）
+                タグ(カンマ区切り)
               </label>
               <input
                 type="text"
@@ -710,78 +791,81 @@ function App() {
           </div>
 
           {previewHtml && (
-  <div style={{ 
-    padding: '12px 16px', 
-    borderTop: '1px solid #e5e7eb', 
-    background: '#fafafa',
-    display: 'flex',
-    gap: '8px',
-    alignItems: 'center'
-  }}>
-    <button
-      onClick={() => {
-        // 保存されていなければ一時的なコンポーネントを作成
-        const tempComponent: SavedComponent = selectedComponent || {
-          id: Date.now(),
-          name: componentName || 'Untitled',
-          code: code,
-          createdAt: new Date().toISOString(),
-          category: componentCategory || undefined,
-          tags: componentTags ? componentTags.split(',').map(t => t.trim()).filter(t => t) : undefined,
-          description: componentDescription || undefined,
-        };
-        handleCopyToFigma(tempComponent, 'svg');
-      }}
-      disabled={copyStatus === 'loading'}
-      style={{
-        padding: '8px 16px',
-        fontSize: '13px',
-        background: copyStatus === 'success' ? '#10b981' : '#3b82f6',
-        color: 'white',
-        border: 'none',
-        borderRadius: '6px',
-        cursor: copyStatus === 'loading' ? 'wait' : 'pointer',
-        fontWeight: '500',
-        opacity: copyStatus === 'loading' ? 0.6 : 1,
-      }}
-    >
-      {copyStatus === 'loading' ? '変換中...' : copyStatus === 'success' ? '✓ コピー完了' : 'SVGでコピー'}
-    </button>
-    
-    <button
-      onClick={() => {
-        const tempComponent: SavedComponent = selectedComponent || {
-          id: Date.now(),
-          name: componentName || 'Untitled',
-          code: code,
-          createdAt: new Date().toISOString(),
-          category: componentCategory || undefined,
-          tags: componentTags ? componentTags.split(',').map(t => t.trim()).filter(t => t) : undefined,
-          description: componentDescription || undefined,
-        };
-        handleCopyToFigma(tempComponent, 'png');
-      }}
-      disabled={copyStatus === 'loading'}
-      style={{
-        padding: '8px 16px',
-        fontSize: '13px',
-        background: copyStatus === 'success' ? '#10b981' : '#3b82f6',
-        color: 'white',
-        border: 'none',
-        borderRadius: '6px',
-        cursor: copyStatus === 'loading' ? 'wait' : 'pointer',
-        fontWeight: '500',
-        opacity: copyStatus === 'loading' ? 0.6 : 1,
-      }}
-    >
-      {copyStatus === 'loading' ? '変換中...' : copyStatus === 'success' ? '✓ コピー完了' : 'PNGでコピー'}
-    </button>
-    
-    <span style={{ fontSize: '12px', color: '#666', marginLeft: '8px' }}>
-      {copyStatus === 'success' ? 'Figmaでペーストしてください' : 'プレビューをFigmaにコピー'}
-    </span>
-  </div>
-)}
+            <div style={{ 
+              padding: '12px 16px', 
+              borderTop: '1px solid #e5e7eb', 
+              background: '#fafafa',
+              display: 'flex',
+              gap: '8px',
+              alignItems: 'center'
+            }}>
+              <button
+  onClick={() => {
+    // selectedComponentを使わず、常に現在のエディタの内容を使う
+    const tempComponent: SavedComponent = {
+      id: generateUUID(),
+      name: componentName || 'Untitled',
+      code: code,  // エディタの現在のコード
+      createdAt: new Date().toISOString(),
+      category: componentCategory || undefined,
+      tags: componentTags ? componentTags.split(',').map(t => t.trim()).filter(t => t) : undefined,
+      description: componentDescription || undefined,
+      simulationData: simulationData || undefined,
+    };
+    handleCopyToFigma(tempComponent, 'svg');
+  }}
+                disabled={copyStatus === 'loading'}
+                style={{
+                  padding: '8px 16px',
+                  fontSize: '13px',
+                  background: copyStatus === 'success' ? '#10b981' : '#3b82f6',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: copyStatus === 'loading' ? 'wait' : 'pointer',
+                  fontWeight: '500',
+                  opacity: copyStatus === 'loading' ? 0.6 : 1,
+                }}
+              >
+                {copyStatus === 'loading' ? '変換中...' : copyStatus === 'success' ? '✓ コピー完了' : 'SVGでコピー'}
+              </button>
+              
+              <button
+  onClick={() => {
+    // selectedComponentを使わず、常に現在のエディタの内容を使う
+    const tempComponent: SavedComponent = {
+      id: generateUUID(),
+      name: componentName || 'Untitled',
+      code: code,  // エディタの現在のコード
+      createdAt: new Date().toISOString(),
+      category: componentCategory || undefined,
+      tags: componentTags ? componentTags.split(',').map(t => t.trim()).filter(t => t) : undefined,
+      description: componentDescription || undefined,
+      simulationData: simulationData || undefined,
+    };
+    handleCopyToFigma(tempComponent, 'png');
+  }}
+                disabled={copyStatus === 'loading'}
+                style={{
+                  padding: '8px 16px',
+                  fontSize: '13px',
+                  background: copyStatus === 'success' ? '#10b981' : '#3b82f6',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: copyStatus === 'loading' ? 'wait' : 'pointer',
+                  fontWeight: '500',
+                  opacity: copyStatus === 'loading' ? 0.6 : 1,
+                }}
+              >
+                {copyStatus === 'loading' ? '変換中...' : copyStatus === 'success' ? '✓ コピー完了' : 'PNGでコピー'}
+              </button>
+              
+              <span style={{ fontSize: '12px', color: '#666', marginLeft: '8px' }}>
+                {copyStatus === 'success' ? 'Figmaでペーストしてください' : 'プレビューをFigmaにコピー'}
+              </span>
+            </div>
+          )}
 
           <div className="data-input-section">
             <div className="data-input-header">
@@ -899,7 +983,7 @@ function App() {
     .filter(template => templateFilterCategory === '' || template.category === templateFilterCategory)
     .map((template, index) => (
             <div
-              key={index}
+              key={`${template.category}-${template.name}-${index}`}  
               onClick={() => handleInsertTemplate(template)}
               style={{
                 padding: '16px',
@@ -952,12 +1036,15 @@ function App() {
         top: '-9999px',
         width: '800px',
         background: 'white',
-        padding: '20px'
+        padding: '60px'
       }}>
         {renderingComponent && (
           <div>
             <iframe
-              srcDoc={generatePreviewForComponent(renderingComponent)}
+      srcDoc={generatePreviewForComponent(
+        renderingComponent,
+        renderingComponent.propsData || {}
+      )}
               style={{ width: '100%', height: '600px', border: 'none' }}
               sandbox="allow-scripts allow-same-origin"
               title="Hidden Render"

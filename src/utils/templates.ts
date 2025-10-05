@@ -12,26 +12,21 @@ export const templates: Template[] = [
     name: 'Primary Button',
     category: 'Button',
     description: 'プライマリアクション用のボタン',
-    sampleData: '{"children": "送信する", "disabled": false}',
-    code: `const PrimaryButton = ({ children, disabled = false }) => {
+    sampleData: '{"text": "送信"}',
+    code: `const PrimaryButton = ({ text }) => {
   return (
-    <button 
-      disabled={disabled}
-      style={{
-        padding: '12px 24px',
-        backgroundColor: disabled ? '#9ca3af' : '#3b82f6',
-        color: 'white',
-        border: 'none',
-        borderRadius: '8px',
-        fontSize: '16px',
-        fontWeight: '600',
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        transition: 'background-color 0.2s',
-        opacity: disabled ? 0.6 : 1,
-      }}
-    >
-      {children || 'ボタン'}
-    </button>
+    <div style={{
+      display: 'inline-block',
+      padding: '10px 20px',
+      backgroundColor: '#1e40af',
+      color: 'white',
+      borderRadius: '6px',
+      fontSize: '14px',
+      fontWeight: '500',
+      cursor: 'pointer',
+    }}>
+      {text || 'ボタン'}
+    </div>
   );
 };`,
   },
@@ -39,51 +34,59 @@ export const templates: Template[] = [
     name: 'Secondary Button',
     category: 'Button',
     description: 'セカンダリアクション用のボタン',
-    sampleData: '{"children": "キャンセル", "disabled": false}',
-    code: `const SecondaryButton = ({ children, disabled = false }) => {
+    sampleData: '{"text": "キャンセル"}',
+    code: `const SecondaryButton = ({ text }) => {
   return (
-    <button 
-      disabled={disabled}
-      style={{
-        padding: '12px 24px',
-        backgroundColor: 'white',
-        color: disabled ? '#9ca3af' : '#3b82f6',
-        border: \`2px solid \${disabled ? '#9ca3af' : '#3b82f6'}\`,
-        borderRadius: '8px',
-        fontSize: '16px',
-        fontWeight: '600',
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        transition: 'all 0.2s',
-        opacity: disabled ? 0.6 : 1,
-      }}
-    >
-      {children || 'ボタン'}
-    </button>
+    <div style={{
+      display: 'inline-block',
+      padding: '10px 20px',
+      backgroundColor: '#f3f4f6',
+      color: '#374151',
+      borderRadius: '6px',
+      fontSize: '14px',
+      fontWeight: '500',
+      cursor: 'pointer',
+    }}>
+      {text || 'ボタン'}
+    </div>
   );
 };`,
   },
   {
-    name: 'Danger Button',
+    name: 'Toggle Button',
     category: 'Button',
-    description: '削除など危険な操作用のボタン',
-    sampleData: '{"children": "削除する"}',
-    code: `const DangerButton = ({ children }) => {
+    description: 'トグルスイッチ（インタラクティブ）',
+    sampleData: '{"label": "通知"}',
+    code: `const Toggle = ({ label }) => {
+  const [isOn, setIsOn] = React.useState(false);
+  
   return (
-    <button 
-      style={{
-        padding: '12px 24px',
-        backgroundColor: '#dc2626',
-        color: 'white',
-        border: 'none',
-        borderRadius: '8px',
-        fontSize: '16px',
-        fontWeight: '600',
-        cursor: 'pointer',
-        transition: 'background-color 0.2s',
-      }}
-    >
-      {children || '削除'}
-    </button>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+      <span style={{ fontSize: '14px', color: '#374151' }}>{label || 'トグル'}</span>
+      <div
+        onClick={() => setIsOn(!isOn)}
+        style={{
+          width: '48px',
+          height: '24px',
+          backgroundColor: isOn ? '#3b82f6' : '#d1d5db',
+          borderRadius: '12px',
+          position: 'relative',
+          cursor: 'pointer',
+          transition: 'background-color 0.2s',
+        }}
+      >
+        <div style={{
+          width: '20px',
+          height: '20px',
+          backgroundColor: 'white',
+          borderRadius: '50%',
+          position: 'absolute',
+          top: '2px',
+          left: isOn ? '26px' : '2px',
+          transition: 'left 0.2s',
+        }} />
+      </div>
+    </div>
   );
 };`,
   },
@@ -559,11 +562,11 @@ export const templates: Template[] = [
   {
     name: 'Tab Navigation',
     category: 'Navigation',
-    description: 'タブナビゲーション',
-    sampleData: '{"tabs": ["概要", "詳細", "レビュー"], "activeTab": "概要"}',
-    code: `const TabNavigation = ({ tabs = [], activeTab }) => {
+    description: 'タブナビゲーション（インタラクティブ）',
+    sampleData: '{"tabs": ["概要", "詳細", "レビュー"]}',
+    code: `const TabNavigation = ({ tabs = [] }) => {
   const tabList = tabs.length > 0 ? tabs : ['タブ1', 'タブ2', 'タブ3'];
-  const active = activeTab || tabList[0];
+  const [activeTab, setActiveTab] = React.useState(tabList[0]);
   
   return (
     <div style={{
@@ -574,13 +577,14 @@ export const templates: Template[] = [
       {tabList.map((tab, i) => (
         <button
           key={i}
+          onClick={() => setActiveTab(tab)}
           style={{
             padding: '12px 0',
             backgroundColor: 'transparent',
             border: 'none',
-            borderBottom: tab === active ? '2px solid #3b82f6' : '2px solid transparent',
-            color: tab === active ? '#3b82f6' : '#6b7280',
-            fontWeight: tab === active ? '600' : '400',
+            borderBottom: tab === activeTab ? '2px solid #3b82f6' : '2px solid transparent',
+            color: tab === activeTab ? '#3b82f6' : '#6b7280',
+            fontWeight: tab === activeTab ? '600' : '400',
             fontSize: '14px',
             cursor: 'pointer',
             marginBottom: '-2px',
@@ -628,9 +632,10 @@ export const templates: Template[] = [
   {
     name: 'Pagination',
     category: 'Navigation',
-    description: 'ページネーション',
-    sampleData: '{"currentPage": 3, "totalPages": 10}',
-    code: `const Pagination = ({ currentPage = 1, totalPages = 5 }) => {
+    description: 'ページネーション（インタラクティブ）',
+    sampleData: '{"totalPages": 10}',
+    code: `const Pagination = ({ totalPages = 5 }) => {
+  const [currentPage, setCurrentPage] = React.useState(1);
   const pages = Array.from({ length: totalPages }, (_, i) => i + 1);
   
   return (
@@ -640,22 +645,26 @@ export const templates: Template[] = [
       alignItems: 'center',
       justifyContent: 'center',
     }}>
-      <button style={{
-        padding: '8px 12px',
-        border: '1px solid #d1d5db',
-        borderRadius: '6px',
-        backgroundColor: 'white',
-        cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
-        opacity: currentPage === 1 ? 0.5 : 1,
-      }}>
+      <button 
+        onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+        style={{
+          padding: '8px 12px',
+          border: '1px solid #d1d5db',
+          borderRadius: '6px',
+          backgroundColor: 'white',
+          cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+          opacity: currentPage === 1 ? 0.5 : 1,
+        }}
+      >
         ‹
       </button>
       {pages.map(page => (
         <button
           key={page}
+          onClick={() => setCurrentPage(page)}
           style={{
             padding: '8px 12px',
-            border: \`1px solid \${page === currentPage ? '#3b82f6' : '#d1d5db'}\`,
+            border: '1px solid ' + (page === currentPage ? '#3b82f6' : '#d1d5db'),
             borderRadius: '6px',
             backgroundColor: page === currentPage ? '#3b82f6' : 'white',
             color: page === currentPage ? 'white' : '#374151',
@@ -666,14 +675,17 @@ export const templates: Template[] = [
           {page}
         </button>
       ))}
-      <button style={{
-        padding: '8px 12px',
-        border: '1px solid #d1d5db',
-        borderRadius: '6px',
-        backgroundColor: 'white',
-        cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
-        opacity: currentPage === totalPages ? 0.5 : 1,
-      }}>
+      <button 
+        onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+        style={{
+          padding: '8px 12px',
+          border: '1px solid #d1d5db',
+          borderRadius: '6px',
+          backgroundColor: 'white',
+          cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+          opacity: currentPage === totalPages ? 0.5 : 1,
+        }}
+      >
         ›
       </button>
     </div>
@@ -701,7 +713,7 @@ export const templates: Template[] = [
     <div style={{
       padding: '16px',
       backgroundColor: color.bg,
-      border: \`1px solid \${color.border}\`,
+      border: '1px solid ' + color.border,
       borderRadius: '8px',
       color: color.text,
       fontSize: '14px',
@@ -746,23 +758,18 @@ export const templates: Template[] = [
   {
     name: 'Loading Spinner',
     category: 'Other',
-    description: 'ローディングスピナー',
+    description: 'ローディングスピナー（静止版）',
     sampleData: '{"size": 40}',
     code: `const LoadingSpinner = ({ size = 32 }) => {
   return (
     <div style={{
       display: 'inline-block',
-      width: \`\${size}px\`,
-      height: \`\${size}px\`,
+      width: size + 'px',
+      height: size + 'px',
       border: '3px solid #e5e7eb',
       borderTop: '3px solid #3b82f6',
       borderRadius: '50%',
-      animation: 'spin 0.8s linear infinite',
-    }}>
-      <style>
-        {\`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }\`}
-      </style>
-    </div>
+    }} />
   );
 };`,
   },
@@ -772,17 +779,20 @@ export const templates: Template[] = [
     description: 'アバター画像',
     sampleData: '{"initials": "YT", "size": 48, "color": "#3b82f6"}',
     code: `const Avatar = ({ initials, size = 40, color = '#3b82f6' }) => {
+  const sizeStr = size + 'px';
+  const fontSize = (size * 0.4) + 'px';
+  
   return (
     <div style={{
-      width: \`\${size}px\`,
-      height: \`\${size}px\`,
+      width: sizeStr,
+      height: sizeStr,
       borderRadius: '50%',
       backgroundColor: color,
       color: 'white',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      fontSize: \`\${size * 0.4}px\`,
+      fontSize: fontSize,
       fontWeight: '600',
     }}>
       {initials || 'A'}
