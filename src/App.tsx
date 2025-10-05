@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Code, Eye, Save, Trash2, FolderOpen, ChevronDown, ChevronUp, Search, X } from 'lucide-react';
+import { Code, Eye, Save, Trash2, FolderOpen, ChevronDown, ChevronUp, Search, X, Download, Upload, FileText } from 'lucide-react';
 import './App.css';
 import { copyElementAsSVG, copyElementAsPNG } from './utils/figmaExport';
+import { templates, type Template } from './utils/templates';
 
 interface SavedComponent {
   id: number;
@@ -25,15 +26,18 @@ function App() {
   const [showDataInput, setShowDataInput] = useState<boolean>(true);
   const [dataError, setDataError] = useState<string>('');
   
-  // Phase 2: 非表示レンダリング用
   const [renderingComponent, setRenderingComponent] = useState<SavedComponent | null>(null);
   const [copyStatus, setCopyStatus] = useState<'idle' | 'loading' | 'success'>('idle');
 
-  // Phase 4: 検索・フィルター用
   const [searchText, setSearchText] = useState<string>('');
   const [filterCategory, setFilterCategory] = useState<string>('');
+  const [templateFilterCategory, setTemplateFilterCategory] = useState<string>(''); // 追加
 
-  // カテゴリの選択肢
+  // Phase 5: テンプレートモーダル
+  const [showTemplateModal, setShowTemplateModal] = useState<boolean>(false);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const categories = ['Button', 'Card', 'Form', 'Layout', 'Navigation', 'Other'];
 
   useEffect(() => {
@@ -51,14 +55,11 @@ function App() {
     localStorage.setItem('componentBridge_components', JSON.stringify(components));
   };
 
-  // Phase 4: フィルタリングロジック
   const filteredComponents = savedComponents.filter((component) => {
-    // テキスト検索
     const matchesSearch = searchText === '' || 
       component.name.toLowerCase().includes(searchText.toLowerCase()) ||
       component.description?.toLowerCase().includes(searchText.toLowerCase());
     
-    // カテゴリフィルター
     const matchesCategory = filterCategory === '' || component.category === filterCategory;
     
     return matchesSearch && matchesCategory;
@@ -131,17 +132,78 @@ function App() {
     setComponentDescription('');
   };
 
-  // Phase 4: フィルターをクリア
   const clearFilters = () => {
     setSearchText('');
     setFilterCategory('');
   };
 
-  // Phase 2: Figmaコピー機能
+  // Phase 5: エクスポート機能
+  const handleExport = () => {
+    const dataStr = JSON.stringify(savedComponents, null, 2);
+    const blob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `component-bridge-export-${new Date().toISOString().split('T')[0]}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Phase 5: インポート機能
+  const handleImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const imported = JSON.parse(e.target?.result as string);
+      if (Array.isArray(imported)) {
+        const confirmed = confirm(`${imported.length}件のコンポーネントをインポートしますか？\n既存のデータに追加されます。`);
+        if (confirmed) {
+          // 各アイテムに一意のIDを生成
+          const withNewIds = imported.map((comp, index) => ({
+            ...comp,
+            id: Date.now() + index, // indexを加算して重複を完全に回避
+            createdAt: new Date().toISOString(),
+          }));
+          const updated = [...savedComponents, ...withNewIds];
+          setSavedComponents(updated);
+          saveToLocalStorage(updated);
+          alert('インポートしました！');
+        }
+      } else {
+        alert('無効なファイル形式です');
+      }
+    } catch (error) {
+      alert('ファイルの読み込みに失敗しました');
+    }
+  };
+  reader.readAsText(file);
+  
+  if (fileInputRef.current) {
+    fileInputRef.current.value = '';
+  }
+};
+
+  // Phase 5: テンプレート挿入
+  const handleInsertTemplate = (template: Template) => {
+  setCode(template.code);
+  setComponentName(template.name);
+  setComponentCategory(template.category);
+  setComponentDescription(template.description);
+  
+  if (template.sampleData) {
+    setSimulationData(template.sampleData);
+  }
+  
+  setShowTemplateModal(false);
+  setTemplateFilterCategory(''); // モーダルを閉じる時にフィルタークリア
+};
+
   const handleCopyToFigma = async (component: SavedComponent, format: 'svg' | 'png') => {
     try {
       setCopyStatus('loading');
-      console.log('Figmaコピー開始:', component.name, format);
       
       setRenderingComponent(null);
       await new Promise(resolve => setTimeout(resolve, 100));
@@ -327,7 +389,33 @@ function App() {
       <header className="app-header">
         <div className="header-left">
           <h1 className="app-title">ComponentBridge</h1>
-          <span className="app-version">Phase 4</span>
+          <span className="app-version">Phase 5</span>
+        </div>
+        <div className="header-right">
+          {/* エクスポート/インポートボタン */}
+          <button 
+            onClick={handleExport}
+            className="header-btn"
+            style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
+          >
+            <Download size={16} />
+            エクスポート
+          </button>
+          <button 
+            onClick={() => fileInputRef.current?.click()}
+            className="header-btn"
+            style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
+          >
+            <Upload size={16} />
+            インポート
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json"
+            onChange={handleImport}
+            style={{ display: 'none' }}
+          />
         </div>
       </header>
 
@@ -347,13 +435,11 @@ function App() {
             </button>
           </div>
 
-          {/* Phase 4: 検索・フィルターUI */}
           <div style={{
             padding: '12px',
             borderBottom: '1px solid #e5e7eb',
             background: '#fafafa',
           }}>
-            {/* 検索ボックス */}
             <div style={{ position: 'relative', marginBottom: '8px' }}>
               <Search size={14} style={{
                 position: 'absolute',
@@ -395,7 +481,6 @@ function App() {
               )}
             </div>
 
-            {/* カテゴリフィルター */}
             <select
               value={filterCategory}
               onChange={(e) => setFilterCategory(e.target.value)}
@@ -414,7 +499,6 @@ function App() {
               ))}
             </select>
 
-            {/* フィルタークリア */}
             {(searchText || filterCategory) && (
               <button
                 onClick={clearFilters}
@@ -434,7 +518,6 @@ function App() {
               </button>
             )}
 
-            {/* 検索結果件数 */}
             <div style={{
               marginTop: '8px',
               fontSize: '11px',
@@ -499,6 +582,24 @@ function App() {
               className="component-name-input"
               style={{ flex: 1 }}
             />
+            <button 
+              onClick={() => setShowTemplateModal(true)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '10px 16px',
+                background: 'white',
+                border: '1px solid #d1d5db',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '14px',
+                transition: 'all 0.15s',
+              }}
+            >
+              <FileText size={16} />
+              テンプレート
+            </button>
             <button 
               onClick={handleSave}
               className="btn-save"
@@ -608,56 +709,79 @@ function App() {
             )}
           </div>
 
-          {previewHtml && selectedComponent && (
-            <div style={{ 
-              padding: '12px 16px', 
-              borderTop: '1px solid #e5e7eb', 
-              background: '#fafafa',
-              display: 'flex',
-              gap: '8px',
-              alignItems: 'center'
-            }}>
-              <button
-                onClick={() => handleCopyToFigma(selectedComponent, 'svg')}
-                disabled={copyStatus === 'loading'}
-                style={{
-                  padding: '8px 16px',
-                  fontSize: '13px',
-                  background: copyStatus === 'success' ? '#10b981' : '#3b82f6',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '6px',
-                  cursor: copyStatus === 'loading' ? 'wait' : 'pointer',
-                  fontWeight: '500',
-                  opacity: copyStatus === 'loading' ? 0.6 : 1,
-                }}
-              >
-                {copyStatus === 'loading' ? '変換中...' : copyStatus === 'success' ? '✓ コピー完了' : 'SVGでコピー'}
-              </button>
-              
-              <button
-                onClick={() => handleCopyToFigma(selectedComponent, 'png')}
-                disabled={copyStatus === 'loading'}
-                style={{
-                  padding: '8px 16px',
-                  fontSize: '13px',
-                  background: copyStatus === 'success' ? '#10b981' : '#3b82f6',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '6px',
-                  cursor: copyStatus === 'loading' ? 'wait' : 'pointer',
-                  fontWeight: '500',
-                  opacity: copyStatus === 'loading' ? 0.6 : 1,
-                }}
-              >
-                {copyStatus === 'loading' ? '変換中...' : copyStatus === 'success' ? '✓ コピー完了' : 'PNGでコピー'}
-              </button>
-              
-              <span style={{ fontSize: '12px', color: '#666', marginLeft: '8px' }}>
-                {copyStatus === 'success' ? 'Figmaでペーストしてください' : 'プレビューをFigmaにコピー'}
-              </span>
-            </div>
-          )}
+          {previewHtml && (
+  <div style={{ 
+    padding: '12px 16px', 
+    borderTop: '1px solid #e5e7eb', 
+    background: '#fafafa',
+    display: 'flex',
+    gap: '8px',
+    alignItems: 'center'
+  }}>
+    <button
+      onClick={() => {
+        // 保存されていなければ一時的なコンポーネントを作成
+        const tempComponent: SavedComponent = selectedComponent || {
+          id: Date.now(),
+          name: componentName || 'Untitled',
+          code: code,
+          createdAt: new Date().toISOString(),
+          category: componentCategory || undefined,
+          tags: componentTags ? componentTags.split(',').map(t => t.trim()).filter(t => t) : undefined,
+          description: componentDescription || undefined,
+        };
+        handleCopyToFigma(tempComponent, 'svg');
+      }}
+      disabled={copyStatus === 'loading'}
+      style={{
+        padding: '8px 16px',
+        fontSize: '13px',
+        background: copyStatus === 'success' ? '#10b981' : '#3b82f6',
+        color: 'white',
+        border: 'none',
+        borderRadius: '6px',
+        cursor: copyStatus === 'loading' ? 'wait' : 'pointer',
+        fontWeight: '500',
+        opacity: copyStatus === 'loading' ? 0.6 : 1,
+      }}
+    >
+      {copyStatus === 'loading' ? '変換中...' : copyStatus === 'success' ? '✓ コピー完了' : 'SVGでコピー'}
+    </button>
+    
+    <button
+      onClick={() => {
+        const tempComponent: SavedComponent = selectedComponent || {
+          id: Date.now(),
+          name: componentName || 'Untitled',
+          code: code,
+          createdAt: new Date().toISOString(),
+          category: componentCategory || undefined,
+          tags: componentTags ? componentTags.split(',').map(t => t.trim()).filter(t => t) : undefined,
+          description: componentDescription || undefined,
+        };
+        handleCopyToFigma(tempComponent, 'png');
+      }}
+      disabled={copyStatus === 'loading'}
+      style={{
+        padding: '8px 16px',
+        fontSize: '13px',
+        background: copyStatus === 'success' ? '#10b981' : '#3b82f6',
+        color: 'white',
+        border: 'none',
+        borderRadius: '6px',
+        cursor: copyStatus === 'loading' ? 'wait' : 'pointer',
+        fontWeight: '500',
+        opacity: copyStatus === 'loading' ? 0.6 : 1,
+      }}
+    >
+      {copyStatus === 'loading' ? '変換中...' : copyStatus === 'success' ? '✓ コピー完了' : 'PNGでコピー'}
+    </button>
+    
+    <span style={{ fontSize: '12px', color: '#666', marginLeft: '8px' }}>
+      {copyStatus === 'success' ? 'Figmaでペーストしてください' : 'プレビューをFigmaにコピー'}
+    </span>
+  </div>
+)}
 
           <div className="data-input-section">
             <div className="data-input-header">
@@ -699,6 +823,128 @@ function App() {
           </div>
         </aside>
       </div>
+
+      {/* テンプレートモーダル */}
+{showTemplateModal && (
+  <div style={{
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
+  }}>
+    <div style={{
+      backgroundColor: 'white',
+      borderRadius: '12px',
+      padding: '24px',
+      maxWidth: '800px',
+      maxHeight: '80vh',
+      overflow: 'auto',
+      width: '90%',
+    }}>
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: '20px',
+      }}>
+        <h2 style={{ fontSize: '20px', fontWeight: 'bold', margin: 0 }}>
+          テンプレートを選択
+        </h2>
+        <button
+  onClick={() => {
+    setShowTemplateModal(false);
+    setTemplateFilterCategory(''); // フィルタークリア
+  }}
+  style={{
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    padding: '4px',
+  }}
+>
+  <X size={24} />
+</button>
+      </div>
+
+      {/* カテゴリフィルター */}
+      {/* カテゴリフィルター */}
+<div style={{ marginBottom: '16px' }}>
+  <select
+    value={templateFilterCategory}
+    onChange={(e) => setTemplateFilterCategory(e.target.value)}
+    style={{
+      width: '100%',
+      padding: '8px 12px',
+      fontSize: '14px',
+      border: '1px solid #d1d5db',
+      borderRadius: '6px',
+      background: 'white',
+    }}
+  >
+    <option value="">全カテゴリ</option>
+    {categories.map(cat => (
+      <option key={cat} value={cat}>{cat}</option>
+    ))}
+  </select>
+</div>
+
+<div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '16px' }}>
+  {templates
+    .filter(template => templateFilterCategory === '' || template.category === templateFilterCategory)
+    .map((template, index) => (
+            <div
+              key={index}
+              onClick={() => handleInsertTemplate(template)}
+              style={{
+                padding: '16px',
+                border: '1px solid #e5e7eb',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                transition: 'all 0.15s',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = '#3b82f6';
+                e.currentTarget.style.backgroundColor = '#eff6ff';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = '#e5e7eb';
+                e.currentTarget.style.backgroundColor = 'transparent';
+              }}
+            >
+              <div style={{
+                fontSize: '12px',
+                color: '#3b82f6',
+                fontWeight: '600',
+                marginBottom: '4px',
+              }}>
+                {template.category}
+              </div>
+              <div style={{
+                fontSize: '16px',
+                fontWeight: '600',
+                marginBottom: '8px',
+              }}>
+                {template.name}
+              </div>
+              <div style={{
+                fontSize: '13px',
+                color: '#6b7280',
+                lineHeight: '1.5',
+              }}>
+                {template.description}
+              </div>
+            </div>
+          ))}
+      </div>
+    </div>
+  </div>
+)}
 
       <div style={{ 
         position: 'absolute', 
